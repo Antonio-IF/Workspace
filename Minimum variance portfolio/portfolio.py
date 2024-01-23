@@ -1,61 +1,85 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import yfinance as yf
+from scipy.optimize import minimize
 
-def obtener_portafolio_minima_varianza(retornos, covarianzas):
-    inversa_covarianzas = np.linalg.inv(covarianzas)
-    unos = np.ones(len(retornos))
+def get_yahoo_data(tickers, start_date, end_date):
+    data = yf.download(tickers, start=start_date, end=end_date)['Adj Close']
+    returns = data.pct_change().dropna()
+    covariances = returns.cov()
+    return returns, covariances
 
-    w_min_varianza = np.dot(inversa_covarianzas, unos) / np.dot(np.dot(unos, inversa_covarianzas), unos)
-    w_min_varianza = w_min_varianza / np.sum(w_min_varianza)
+def get_minimum_variance_portfolio_weights(returns, covariances):
+    num_assets = len(returns.columns)
+    
+    # Asegurarse de que las matrices tengan las dimensiones correctas
+    if covariances.shape != (num_assets, num_assets):
+        raise ValueError("Mismatch in dimensions of covariance matrix and number of assets")
 
-    return w_min_varianza
+    inv_covariances = np.linalg.inv(covariances)
+    ones = np.ones(num_assets)
 
-def calcular_retorno_y_varianza(w, retornos, covarianzas):
-    retorno = np.dot(w, retornos)
-    varianza = np.dot(np.dot(w, covarianzas), w)
-    return retorno, varianza
+    weights_min_variance = np.dot(inv_covariances, ones) / np.dot(np.dot(ones, inv_covariances), ones)
+    weights_min_variance = weights_min_variance / np.sum(weights_min_variance)
 
-# Pedir al usuario la cantidad de activos y sus retornos
-num_activos = int(input("Ingrese el número de activos: "))
-retornos = np.array([float(input(f"Retorno del activo {i + 1}: ")) for i in range(num_activos)])
+    return weights_min_variance
 
-# Pedir al usuario la matriz de covarianzas
-print("Ingrese la matriz de covarianzas:")
-covarianzas = np.array([list(map(float, input().split())) for _ in range(num_activos)])
 
-# Calcular el portafolio de mínima varianza
-w_min_varianza = obtener_portafolio_minima_varianza(retornos, covarianzas)
+def calculate_return_and_variance(weights, returns, covariances):
+    if len(weights) != returns.shape[1]:
+        raise ValueError("Mismatch in number of assets and length of weights")
 
-# Imprimir resultados
-print("\nPesos del portafolio de mínima varianza:")
-for i in range(num_activos):
-    print(f"Activo {i + 1}: {w_min_varianza[i]:.4f}")
+    portfolio_return = np.dot(weights, returns.mean())
+    portfolio_variance = np.dot(np.dot(weights, covariances), weights)
+    return portfolio_return, portfolio_variance
 
-# Calcular el retorno y la varianza del portafolio de mínima varianza
-retorno_min_varianza, varianza_min_varianza = calcular_retorno_y_varianza(w_min_varianza, retornos, covarianzas)
 
-print("\nRetorno del portafolio de mínima varianza:", retorno_min_varianza)
-print("Varianza del portafolio de mínima varianza:", varianza_min_varianza)
+# User input for stock tickers
+tickers = input("Enter stock tickers (comma-separated): ").split(',')
 
-# Generar la frontera de mínima varianza
-pesos = []
-varianzas = []
+# Time period for data
+start_date = '2020-01-01'
+end_date = '2023-01-01'
 
-for tasa_retorno_objetivo in np.linspace(min(retornos), max(retornos), num=100):
-    restricciones = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1},
-                     {'type': 'eq', 'fun': lambda w: np.dot(w, retornos) - tasa_retorno_objetivo}]
+# Get data from Yahoo Finance
+returns, covariances = get_yahoo_data(tickers, start_date, end_date)
 
-    resultado = minimize(lambda w: np.dot(np.dot(w, covarianzas), w), w_min_varianza, constraints=restricciones)
-    peso_optimo = resultado.x
+# Calculate the minimum variance portfolio
+weights_min_variance = get_minimum_variance_portfolio_weights(returns, covariances)
 
-    pesos.append(peso_optimo)
-    varianzas.append(np.dot(np.dot(peso_optimo, covarianzas), peso_optimo))
+# Print results
+print("\nWeights of the minimum variance portfolio:")
+for i, ticker in enumerate(tickers):
+    print(f"{ticker}: {weights_min_variance[i]:.4f}")
 
-# Graficar la frontera de mínima varianza
+# Calculate the return and variance of the minimum variance portfolio
+return_min_variance, variance_min_variance = calculate_return_and_variance(weights_min_variance, returns, covariances)
+
+print("\nReturn of the minimum variance portfolio:", return_min_variance)
+print("Variance of the minimum variance portfolio:", variance_min_variance)
+
+# Generate the minimum variance frontier
+weights_frontier = []
+variances_frontier = []
+
+for target_return in np.linspace(min(returns.mean()), max(returns.mean()), num=100):
+    constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1},
+                   {'type': 'eq', 'fun': lambda w: np.dot(w, returns.mean()) - target_return}]
+
+    result = minimize(lambda w: np.dot(np.dot(w, covariances), w), weights_min_variance, constraints=constraints)
+    optimal_weight = result.x
+
+    weights_frontier.append(optimal_weight)
+    variances_frontier.append(np.dot(np.dot(optimal_weight, covariances), optimal_weight))
+
+# Plot the minimum variance frontier
 plt.figure(figsize=(10, 6))
-plt.scatter(varianzas, [r for r in np.linspace(min(retornos), max(retornos), num=100)], c=varianzas, cmap='viridis', marker='o')
-plt.title('Frontera de Mínima Varianza')
-plt.xlabel('Varianza')
-plt.ylabel('Tasa de Retorno')
-plt.colorbar(label='Varianza')
+plt.scatter(variances_frontier, [r for r in np.linspace(min(returns.mean()), max(returns.mean()), num=100)], c=variances_frontier, cmap='viridis', marker='o')
+plt.title('Minimum Variance Frontier')
+plt.xlabel('Variance')
+plt.ylabel('Return')
+plt.colorbar(label='Variance')
 plt.show()
+
+
+#  streamlit run app.py
