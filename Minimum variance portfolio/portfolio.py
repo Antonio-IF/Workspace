@@ -1,18 +1,21 @@
+# Import libraries
 import numpy as np
 import matplotlib.pyplot as plt
 import yfinance as yf
 from scipy.optimize import minimize
 
+# Function to extract data 
 def get_yahoo_data(tickers, start_date, end_date):
     data = yf.download(tickers, start=start_date, end=end_date)['Adj Close']
     returns = data.pct_change().dropna()
     covariances = returns.cov()
     return returns, covariances
 
+# Function get minimum variance portfolio
 def get_minimum_variance_portfolio_weights(returns, covariances):
     num_assets = len(returns.columns)
     
-    # Asegurarse de que las matrices tengan las dimensiones correctas
+    # dim of matrix are correct?
     if covariances.shape != (num_assets, num_assets):
         raise ValueError("Mismatch in dimensions of covariance matrix and number of assets")
 
@@ -24,7 +27,7 @@ def get_minimum_variance_portfolio_weights(returns, covariances):
 
     return weights_min_variance
 
-
+# Function of returns and variances
 def calculate_return_and_variance(weights, returns, covariances):
     if len(weights) != returns.shape[1]:
         raise ValueError("Mismatch in number of assets and length of weights")
@@ -81,5 +84,3 @@ plt.ylabel('Return')
 plt.colorbar(label='Variance')
 plt.show()
 
-
-#  streamlit run app.py
