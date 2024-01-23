@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import yfinance as yf
 from scipy.optimize import minimize
 
-# Function to extract data 
+# Function to extract data from Yahoo Finance
 def get_yahoo_data(tickers, start_date, end_date):
     data = yf.download(tickers, start=start_date, end=end_date)['Adj Close']
     returns = data.pct_change().dropna()
