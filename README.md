@@ -2,11 +2,11 @@
 
 ## ¡Bienvenido! 👋
 
-Soy Juan Antonio Mugica, un ingeniero financiero que combina la pasión por los mercados financieros con el poder de la programación y el análisis de datos.
+Soy Juan Antonio Mugica, un ingeniero financiero que combina la emoción por los mercados financieros con el poder de la programación y el análisis de datos.
 
 ### 🚀 Lo que encontrarás en este repositorio
 
-Este espacio alberga una colección de proyectos que demuestran mi experiencia en:
+Este espacio contiene una colección de proyectos que demuestran mi experiencia en:
 
 - 📊 Análisis cuantitativo y modelado financiero
 - 💹 Trading algorítmico y backtesting de estrategias
