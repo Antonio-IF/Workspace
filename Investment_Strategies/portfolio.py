@@ -284,16 +284,16 @@ sp500_returns = sp500_data.pct_change().dropna()
 sp500_portfolio_value = initial_investment * (1 + sp500_returns).cumprod()
 
 # Metrics for S&P 500
-sp500_total_return = (sp500_portfolio_value[-1] - initial_investment) / initial_investment * 100
+sp500_total_return = float((sp500_portfolio_value.iloc[-1] - initial_investment) / initial_investment * 100)
 sp500_returns_series = sp500_portfolio_value.pct_change().dropna()
-sp500_annual_return = (1 + sp500_total_return/100) ** (252/len(sp500_returns)) - 1
-sp500_volatility = np.std(sp500_returns_series) * np.sqrt(252)
-sp500_sharpe_ratio = (sp500_annual_return - 0.02) / sp500_volatility
-sp500_max_drawdown = np.min(sp500_portfolio_value/np.maximum.accumulate(sp500_portfolio_value) - 1)
+sp500_annual_return = float((1 + sp500_total_return/100) ** (252/len(sp500_returns)) - 1)
+sp500_volatility = float(np.std(sp500_returns_series) * np.sqrt(252))
+sp500_sharpe_ratio = float((sp500_annual_return - 0.02) / sp500_volatility)
+sp500_max_drawdown = float(np.min(sp500_portfolio_value/np.maximum.accumulate(sp500_portfolio_value) - 1))
 
 # Print Results for S&P 500
 print("\nS&P 500 Results:")
-print(f"Final Portfolio Value: ${sp500_portfolio_value[-1]:,.2f}")
+print(f"Final Portfolio Value: ${float(sp500_portfolio_value.iloc[-1]):,.2f}")
 print(f"Total Return: {sp500_total_return:.2f}%")
 print(f"Annualized Return: {sp500_annual_return*100:.2f}%")
 print(f"Annualized Volatility: {sp500_volatility*100:.2f}%")
