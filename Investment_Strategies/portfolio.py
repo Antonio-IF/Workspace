@@ -5,6 +5,9 @@ import yfinance as yf
 from scipy.optimize import minimize
 from datetime import datetime
 import pandas as pd
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=UserWarning)
 
 # Function to extract data from Yahoo Finance
 def get_yahoo_data(tickers, start_date, end_date):
@@ -63,7 +66,7 @@ def calculate_return_and_variance(weights, returns, covariances):
     portfolio_variance = np.dot(np.dot(weights, covariances), weights)
     return portfolio_return, portfolio_variance
 
-def calculate_efficient_frontier(returns, covariances, num_portfolios=100):
+def calculate_efficient_frontier(returns, covariances, num_portfolios=50000):
     num_assets = len(returns.columns)
     
     # Add check for few assets
@@ -196,7 +199,7 @@ def perform_backtest_with_rebalancing(initial_investment, returns, rebalance_mon
     }
 
 # Time period for data
-start_date = '2020-01-01'
+start_date = '2020-11-01'
 end_date = '2024-11-01'
 
 # User input and data download section
@@ -270,6 +273,41 @@ plt.plot(backtest_results['portfolio_value'])
 plt.title('Portfolio Value Over Time (With Rebalancing)')
 plt.xlabel('Date')
 plt.ylabel('Portfolio Value ($)')
+plt.grid(True)
+plt.show()
+
+# Get data from S&P 500 for the same period
+sp500_data = yf.download('^GSPC', start=start_date, end=end_date)['Adj Close']
+sp500_returns = sp500_data.pct_change().dropna()
+
+# Calculate value for S&P 500 portfolio
+sp500_portfolio_value = initial_investment * (1 + sp500_returns).cumprod()
+
+# Metrics for S&P 500
+sp500_total_return = (sp500_portfolio_value[-1] - initial_investment) / initial_investment * 100
+sp500_returns_series = sp500_portfolio_value.pct_change().dropna()
+sp500_annual_return = (1 + sp500_total_return/100) ** (252/len(sp500_returns)) - 1
+sp500_volatility = np.std(sp500_returns_series) * np.sqrt(252)
+sp500_sharpe_ratio = (sp500_annual_return - 0.02) / sp500_volatility
+sp500_max_drawdown = np.min(sp500_portfolio_value/np.maximum.accumulate(sp500_portfolio_value) - 1)
+
+# Print Results for S&P 500
+print("\nS&P 500 Results:")
+print(f"Final Portfolio Value: ${sp500_portfolio_value[-1]:,.2f}")
+print(f"Total Return: {sp500_total_return:.2f}%")
+print(f"Annualized Return: {sp500_annual_return*100:.2f}%")
+print(f"Annualized Volatility: {sp500_volatility*100:.2f}%")
+print(f"Sharpe Ratio: {sp500_sharpe_ratio:.2f}")
+print(f"Maximum Drawdown: {sp500_max_drawdown*100:.2f}%")
+
+# Comparative plots
+plt.figure(figsize=(12, 6))
+plt.plot(backtest_results['portfolio_value'], label='Optimized Portfolio')
+plt.plot(sp500_portfolio_value, label='S&P 500')
+plt.title('Comparison: Optimized Portfolio vs S&P 500')
+plt.xlabel('Date')
+plt.ylabel('Portfolio Value ($)')
+plt.legend()
 plt.grid(True)
 plt.show()
 
