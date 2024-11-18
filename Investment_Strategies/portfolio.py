@@ -8,6 +8,7 @@ import pandas as pd
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
+np.seterr(divide='ignore', invalid='ignore') 
 
 # Function to extract data from Yahoo Finance
 def get_yahoo_data(tickers, start_date, end_date):
@@ -19,11 +20,26 @@ def get_yahoo_data(tickers, start_date, end_date):
         if data.empty:
             raise ValueError("Could not obtain data for the specified tickers")
         
+        # Check minimum observations for covariance calculation
+        if len(data) < len(tickers) + 2:  # n+2 observations minimum for covariance
+            raise ValueError("Insufficient data points for reliable covariance calculation")
+        
+        # Handle missing data by dropping completely empty rows
+        data = data.dropna(how='all')
+        if data.empty:
+            raise ValueError("Data is empty after removing missing values")
+        
         returns = data.pct_change().dropna()
         if returns.empty:
             raise ValueError("Not enough data to calculate returns")
-            
-        covariances = returns.cov()
+        
+        # Use min_periods in cov() to ensure sufficient observations
+        covariances = returns.cov(min_periods=len(tickers)+2)
+        
+        # Check if the covariance matrix contains NaN values
+        if covariances.isnull().values.any():
+            raise ValueError("Covariance matrix contains NaN values")
+        
         return returns, covariances
     except Exception as e:
         raise ValueError(f"Error downloading data: {str(e)}")
@@ -36,22 +52,22 @@ def get_minimum_variance_portfolio_weights(returns, covariances):
     if num_assets < 2:
         raise ValueError("At least two assets are needed to create a portfolio")
     
-    # Asegurar que covariances es una matriz 2D
+    # Ensure covariances is a 2D matrix
     covariances = np.array(covariances)
     if len(covariances.shape) == 1:
         covariances = covariances.reshape(num_assets, num_assets)
 
-    # Añadir control de condicionamiento de matriz
+    # Add matrix conditioning control
     try:
         inv_covariances = np.linalg.inv(covariances)
     except np.linalg.LinAlgError:
-        # Si la matriz es singular, usar pseudoinversa
+        # If the matrix is singular, use pseudoinverse
         inv_covariances = np.linalg.pinv(covariances)
     
     ones = np.ones(num_assets)
     weights_min_variance = np.dot(inv_covariances, ones) / np.dot(np.dot(ones, inv_covariances), ones)
     
-    # Asegurar que los pesos sumen 1 y sean no negativos
+    # Ensure weights sum to 1 and are non-negative
     weights_min_variance = np.maximum(weights_min_variance, 0)
     weights_min_variance = weights_min_variance / np.sum(weights_min_variance)
 
@@ -68,6 +84,10 @@ def calculate_return_and_variance(weights, returns, covariances):
 
 def calculate_efficient_frontier(returns, covariances, num_portfolios=50000):
     num_assets = len(returns.columns)
+    
+    # Check minimum observations for optimization
+    if len(returns) < num_assets + 2:
+        raise ValueError("Insufficient data points for reliable optimization")
     
     # Add check for few assets
     if num_assets < 2:
@@ -104,14 +124,14 @@ def optimize_sharpe_ratio(returns, covariances, risk_free_rate=0.02):
     num_assets = len(returns.columns)
     
     def negative_sharpe(weights):
-        portfolio_return = np.sum(returns.mean() * weights) * 252  # Anualizado
+        portfolio_return = np.sum(returns.mean() * weights) * 252  # Annualized
         portfolio_std = np.sqrt(np.dot(weights.T, np.dot(covariances * 252, weights)))
         sharpe = (portfolio_return - risk_free_rate) / portfolio_std
-        return -sharpe  # Negativo porque minimize busca el mínimo
+        return -sharpe  # Negative because minimize seeks the minimum
     
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},  # suma de pesos = 1
-        {'type': 'ineq', 'fun': lambda x: x}  # pesos >= 0
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},  # sum of weights = 1
+        {'type': 'ineq', 'fun': lambda x: x}  # weights >= 0
     ]
     
     result = minimize(negative_sharpe,
@@ -122,64 +142,68 @@ def optimize_sharpe_ratio(returns, covariances, risk_free_rate=0.02):
     return result.x
 
 def perform_backtest_with_rebalancing(initial_investment, returns, rebalance_months=6, risk_free_rate=0.02):
-    # Convertir el índice a datetime si no lo está
+    # Verify sufficient data for the first period
+    if len(returns) < len(returns.columns) + 2:
+        raise ValueError("Insufficient data points for reliable backtest")
+    
+    # Convert index to datetime if not already
     returns.index = pd.to_datetime(returns.index)
     
-    # Inicializar variables
+    # Initialize variables
     portfolio_values = []
     current_weights = None
     current_value = initial_investment
     weights_history = []
     dates_history = []
     
-    # Definir fechas de rebalanceo
+    # Define rebalancing dates
     start_date = returns.index[0]
     end_date = returns.index[-1]
     current_date = start_date
     
     while current_date <= end_date:
-        # Definir el período para la optimización
+        # Define the period for optimization
         optimization_end = current_date
-        optimization_start = returns.index[0]  # Usar todos los datos disponibles hasta current_date
+        optimization_start = returns.index[0]  # Use all available data up to current_date
         
-        # Obtener datos para la optimización
+        # Get data for optimization
         optimization_returns = returns[optimization_start:optimization_end]
         
         if len(optimization_returns) > 0:
-            # Calcular covarianzas con datos históricos
+            # Calculate covariances with historical data
             optimization_cov = optimization_returns.cov()
             
-            # Optimizar pesos
+            # Optimize weights
             current_weights = optimize_sharpe_ratio(optimization_returns, optimization_cov, risk_free_rate)
             
-            # Guardar pesos y fecha
+            # Save weights and date
             weights_history.append(current_weights)
             dates_history.append(current_date)
         
-        # Definir período de simulación (próximos 6 meses)
+        # Define simulation period (next 6 months)
         next_rebalance_date = current_date + pd.DateOffset(months=rebalance_months)
         simulation_period = returns[current_date:next_rebalance_date]
         
         if len(simulation_period) > 0:
-            # Calcular retornos del portafolio para este período
+            # Calculate portfolio returns for this period
             period_returns = np.dot(simulation_period, current_weights)
             
-            # Modificar el cálculo de period_values para asegurar longitudes correctas
+            # Modify the calculation of period_values to ensure correct lengths
             period_values = current_value * (1 + period_returns).cumprod()
             if len(portfolio_values) == 0:
                 portfolio_values.extend(period_values.tolist())
             else:
-                portfolio_values.extend(period_values.tolist()[1:])  # Evitar duplicar fechas
+                portfolio_values.extend(period_values.tolist()[1:])  # Avoid duplicating dates
             
             current_value = period_values[-1]
         
-        # Avanzar a la siguiente fecha de rebalanceo
+        # Move to the next rebalancing date
         current_date = next_rebalance_date
     
-    # Asegurar que las longitudes coincidan
+    # Ensure lengths match
     portfolio_values = pd.Series(portfolio_values[:len(returns.index)], index=returns.index[:len(portfolio_values)])
     
-    # Calcular métricas de rendimiento
+    # Calculate performance metrics
     total_return = (portfolio_values[-1] - initial_investment) / initial_investment * 100
     portfolio_returns = portfolio_values.pct_change().dropna()
     annual_return = (1 + total_return/100) ** (252/len(returns)) - 1
